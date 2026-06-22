@@ -1,7 +1,8 @@
 # 📅 Календарь — Сервис бронирования времени
 
 Сервис для бронирования времени по мотивам [Cal.com](https://cal.com).
-Проект разработан в рамках курса **Hexlet AI для разработчиков**.
+
+Проект разработан в рамках курса [**Hexlet AI для разработчиков**](https://ru.hexlet.io/programs/ai-for-developers).
 
 ### Hexlet tests and linter status:
 [![Actions Status](https://github.com/nujensait/ai-for-developers-project-386/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/nujensait/ai-for-developers-project-386/actions)
@@ -21,7 +22,7 @@
 - [🤖 Разработка с ИИ-агентами](#-разработка-с-ии-агентами)
 - [📋 План развития](#-план-развития)
 - [📝 Лицензия](#-лицензия)
-- [🙏 Благодарности](#-благодарности)
+- [🙏 Автор](#-автор)
 
 ---
 
@@ -308,6 +309,6 @@ npm run generate:api      # -> openapi/schema/openapi.yaml
 
 MIT © [Hexlet](https://hexlet.io)
 
-## Автор
+## 🔧 Автор
 
 - Иконников Михаил <mishaikon@gmail.com>, OpenCode (Claude Opus 4.7)
