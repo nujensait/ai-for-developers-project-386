@@ -1,6 +1,6 @@
 # 📅 Календарь — Сервис бронирования времени
 
-Сервис для бронирования времени по мотивам [Cal.com](https://cal.com).  
+Сервис для бронирования времени по мотивам [Cal.com](https://cal.com).
 Проект разработан в рамках курса **Hexlet AI для разработчиков**.
 
 ### Hexlet tests and linter status:
@@ -8,45 +8,22 @@
 
 ---
 
-## 📑 Оглавление
-
-- [🎯 О проекте](#-о-проекте)
-- [🧱 Технологический стек](#-технологический-стек)
-- [📂 Структура проекта](#-структура-проекта)
-- [🚀 Быстрый старт](#-быстрый-старт)
-- [📖 API Документация](#-api-документация)
-- [🧪 Тестирование](#-тестирование)
-- [🐳 Docker-образ](#-docker-образ)
-- [🔧 Разработка](#-разработка)
-- [🤖 Разработка с ИИ-агентами](#-разработка-с-ии-агентами)
-- [📋 План развития](#-план-развития)
-- [📝 Лицензия](#-лицензия)
-- [🙏 Благодарности](#-благодарности)
-- [Автор](#автор)
-
----
-
 ## 🎯 О проекте
 
-**"Запись на звонок"** — это упрощённый сервис бронирования времени.  
-Владелец календаря публикует доступное время для встреч, а гости выбирают свободные слоты и записываются.
+Упрощённый сервис бронирования времени. Владелец календаря публикует типы событий
+(длительность встреч), а гости выбирают свободные слоты и записываются.
 
 ### Ключевые возможности
 
-- **Владелец календаря:**
-    - Создание типов событий (название, описание, длительность)
-    - Просмотр всех бронирований
-    - Управление событиями (CRUD)
+- **Типы событий (event types):** CRUD — название, описание, длительность.
+- **Доступность (availability):** сетка 30-минутных слотов, 09:00–21:00, на 14 дней вперёд.
+- **Бронирования (bookings):** создание/просмотр/удаление; один слот — одна запись.
 
-- **Гость:**
-    - Просмотр доступных типов событий
-    - Выбор свободного слота (30-минутные интервалы, 9:00–21:00, на 14 дней вперёд)
-    - Бронирование с указанием имени и email
+### Бизнес-правила
 
-- **Бизнес-правила:**
-    - Один слот — одна запись (конфликт возвращает 409)
-    - Все даты в UTC (ISO 8601)
-    - Данные хранятся в памяти (без БД, сброс при перезапуске)
+- Пересечение по времени с существующей бронью → `409 Conflict`.
+- Все даты — в UTC (ISO 8601, `...Z`).
+- Данные хранятся в **SQLite** и сохраняются между перезапусками.
 
 ---
 
@@ -54,13 +31,17 @@
 
 | Компонент | Технологии |
 |-----------|------------|
-| **Бэкенд** | Symfony 7.2, PHP 8.3, FOSRestBundle, JMSSerializer, NelmioApiDoc |
-| **Фронтенд** | React + TypeScript + Vite + shadcn/ui (рекомендуется) |
+| **Бэкенд** | Symfony 7.2, PHP 8.3 |
+| **Хранилище** | SQLite + Doctrine ORM (миграции) |
 | **API-контракт** | TypeSpec → OpenAPI 3.1 |
-| **Тестирование** | PHPUnit (бэкенд), Playwright (E2E) |
+| **Документация** | Swagger UI (`/api/doc`) на основе сгенерированного OpenAPI |
+| **Тестирование** | PHPUnit (WebTestCase) |
 | **Контейнеризация** | Docker + Docker Compose |
-| **CI/CD** | GitHub Actions, release-please |
-| **Деплой** | Render (или любой хостинг с Docker) |
+| **Сервер** | встроенный веб-сервер PHP (`php -S`) |
+
+> Реализация использует нативный стек Symfony (атрибут-роутинг + Validator + JsonResponse)
+> вместо FOSRest/JMS/Nelmio — это уменьшает число зависимостей и риски сборки.
+> Подробности отклонений от исходного ТЗ — в `doc/PLAN.md` и `doc/WORK_LOG.md`.
 
 ---
 
@@ -68,109 +49,110 @@
 
 ```
 calendar/
-├── .github/workflows/          # CI/CD (тесты, релизы)
-├── backend/                    # Symfony API
-│   ├── config/                 # Конфигурация
-│   ├── public/                 # Точка входа
+├── typespec/main.tsp          # Контракт API (TypeSpec)
+├── openapi/schema/openapi.yaml# Сгенерированный OpenAPI 3.1
+├── backend/                   # Symfony API
+│   ├── config/                # Конфигурация (framework, doctrine, routes, services)
+│   ├── public/index.php       # Точка входа + openapi.yaml для Swagger UI
+│   ├── migrations/            # Doctrine-миграции
 │   ├── src/
-│   │   ├── Controller/         # REST-контроллеры
-│   │   ├── DTO/                # Data Transfer Objects
-│   │   ├── Entity/             # Доменные сущности
-│   │   ├── Exception/          # Кастомные исключения
-│   │   ├── Repository/         # In-memory хранилища
-│   │   └── Service/            # Бизнес-логика
-│   ├── tests/                  # PHPUnit-тесты
-│   ├── Dockerfile
-│   └── composer.json
-├── frontend/                   # React-приложение
-├── typespec/                   # TypeSpec-спецификация API
-├── docker-compose.yml          # Локальный запуск
-├── Makefile                    # Упрощённые команды
-└── README.md
+│   │   ├── Controller/        # EventType, Booking, Doc
+│   │   ├── DTO/               # Объекты запросов/ответов
+│   │   ├── Entity/            # Doctrine-сущности
+│   │   ├── EventSubscriber/   # CORS, обработка ошибок → JSON
+│   │   ├── Exception/         # ConflictException, NotFoundException
+│   │   ├── Repository/        # Doctrine-репозитории
+│   │   └── Service/           # Бизнес-логика
+│   ├── tests/                 # PHPUnit
+│   ├── docker/                # php.ini, entrypoint.sh
+│   └── Dockerfile
+├── docker-compose.yml
+├── Makefile
+└── package.json               # TypeSpec-зависимости и скрипт generate:api
 ```
 
 ---
 
-## 🚀 Быстрый старт
+## 🚀 Быстрый старт (Docker)
 
-### Требования
-
-- **Docker** и **Docker Compose** (установлены)
-- **Make** (опционально, для удобства)
-- **WSL** (для Windows-пользователей)
-
-### 1. Клонирование репозитория
+> Требуется Docker и Docker Compose. Приложение слушает порт **8081** (переменная `PORT`).
 
 ```bash
-git clone https://github.com/your-username/calendar.git
-cd calendar
+# 1. Собрать образ
+docker-compose build
+
+# 2. Запустить
+docker-compose up -d
+
+# 3. Проверить API
+curl http://localhost:8081/api/event-types
+# -> []
 ```
 
-### 2. Запуск в Docker (рекомендуемый способ)
+Доступно после запуска:
+- **API:** `http://localhost:8081`
+- **Документация (Swagger UI):** `http://localhost:8081/api/doc`
+- **OpenAPI:** `http://localhost:8081/api/openapi.yaml`
+
+Сменить порт: `PORT=9090 docker-compose up -d` (или `make up PORT=9090`).
+
+### Через Makefile
 
 ```bash
-# Собрать и запустить все сервисы
-docker-compose up -d --build
-
-# Проверить, что всё работает
-curl http://localhost:8080/api/event-types
-```
-
-Приложение будет доступно:
-- **Бэкенд API:** `http://localhost:8080`
-- **Документация API:** `http://localhost:8080/api/doc`
-- **Фронтенд:** `http://localhost:5173`
-
-### 3. Запуск без Docker (для разработки)
-
-```bash
-# Бэкенд
-cd backend
-composer install
-php -S 0.0.0.0:8080 -t public
-
-# Фронтенд (в другом терминале)
-cd frontend
-npm install
-npm run dev
+make build         # сборка образа
+make up            # запуск (docker-compose up -d)
+make test          # запуск PHPUnit в контейнере
+make generate-api  # TypeSpec -> OpenAPI и копирование в backend
+make logs          # логи бэкенда
+make down          # остановка
 ```
 
 ---
 
-## 📖 API Документация
-
-После запуска документация доступна по адресу:  
-👉 [http://localhost:8080/api/doc](http://localhost:8080/api/doc)
-
-### Основные эндпоинты
+## 📖 API
 
 | Метод | Эндпоинт | Описание |
 |-------|----------|----------|
 | `GET` | `/api/event-types` | Список типов событий |
 | `POST` | `/api/event-types` | Создать тип события |
-| `GET` | `/api/availability` | Свободные слоты |
-| `POST` | `/api/bookings` | Создать бронирование |
+| `GET` | `/api/event-types/{id}` | Получить тип события |
+| `PUT` | `/api/event-types/{id}` | Обновить тип события |
+| `DELETE` | `/api/event-types/{id}` | Удалить тип события |
+| `GET` | `/api/availability` | Свободные слоты (`?eventTypeId=&from=&to=`) |
 | `GET` | `/api/bookings` | Список бронирований |
+| `POST` | `/api/bookings` | Создать бронирование |
+| `GET` | `/api/bookings/{id}` | Получить бронирование |
+| `DELETE` | `/api/bookings/{id}` | Удалить бронирование |
 
-### Пример запроса (создание бронирования)
+### Пример: создать тип события
 
 ```bash
-curl -X POST http://localhost:8080/api/bookings \
+curl -X POST http://localhost:8081/api/event-types \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Интро-звонок","description":"Знакомство","duration":30}'
+```
+
+```json
+{ "id": "evt_1a2b3c4d5e6f7a8b", "title": "Интро-звонок", "description": "Знакомство", "duration": 30 }
+```
+
+### Пример: создать бронирование
+
+```bash
+curl -X POST http://localhost:8081/api/bookings \
   -H "Content-Type: application/json" \
   -d '{
-    "eventTypeId": "evt_123",
+    "eventTypeId": "evt_1a2b3c4d5e6f7a8b",
     "guestName": "Иван Петров",
     "guestEmail": "ivan@example.com",
     "startTime": "2026-06-25T10:00:00Z"
   }'
 ```
 
-### Ответ (201 Created)
-
 ```json
 {
-  "id": "bok_456",
-  "eventTypeId": "evt_123",
+  "id": "bok_9f8e7d6c5b4a3210",
+  "eventTypeId": "evt_1a2b3c4d5e6f7a8b",
   "guestName": "Иван Петров",
   "guestEmail": "ivan@example.com",
   "startTime": "2026-06-25T10:00:00Z",
@@ -179,112 +161,63 @@ curl -X POST http://localhost:8080/api/bookings \
 }
 ```
 
+### Формат ошибок
+
+```json
+{ "code": "CONFLICT", "message": "The requested time slot is already booked" }
+```
+
+Коды: `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `CONFLICT` (409).
+
 ---
 
 ## 🧪 Тестирование
 
-### PHPUnit (бэкенд)
-
 ```bash
-cd backend
-php bin/phpunit
+make test
+# или напрямую:
+docker-compose run --rm -e APP_ENV=test backend php bin/phpunit
 ```
 
-### Playwright (E2E)
-
-```bash
-docker-compose run --rm playwright
-```
+Тесты используют отдельную БД (`var/test.db`); схема пересоздаётся перед каждым тестом.
 
 ---
 
-## 🐳 Docker-образ
-
-Приложение упаковано в Docker-образ и может быть развёрнуто на любом хостинге.
-
-### Сборка образа
+## 🔧 Контракт API (Design-First)
 
 ```bash
-docker build -t calendar-app -f backend/Dockerfile .
+# Сгенерировать OpenAPI из TypeSpec (нужен Node.js 22)
+npm install
+npm run generate:api      # -> openapi/schema/openapi.yaml
 ```
 
-### Запуск контейнера
-
-```bash
-docker run -p 8080:8080 -e PORT=8080 calendar-app
-```
+`make generate-api` дополнительно копирует спецификацию в `backend/public/openapi.yaml`,
+откуда её читает Swagger UI на `/api/doc`.
 
 ---
 
-## 🔧 Разработка
+## 🗄️ Хранилище и порт
 
-### Генерация OpenAPI-спецификации из TypeSpec
-
-```bash
-cd typespec
-npx tsp compile main.tsp --emit @typespec/openapi3 --output-dir ../openapi
-```
-
-### Добавление новой модели
-
-1. Описать модель в `typespec/main.tsp`
-2. Сгенерировать OpenAPI: `make generate-api`
-3. Обновить бэкенд: добавить Entity, DTO, Repository, Service
-4. Обновить фронтенд: типы и запросы
-
----
-
-## 🤖 Разработка с ИИ-агентами
-
-Весь проект разработан с использованием **ИИ-агентов** (OpenCode + Claude/DeepSeek).
-
-**Принципы:**
-- **Design First** — сначала контракт, потом код
-- **Ни одной строки вручную** — весь код написан агентами
-- **Итеративность** — маленькие шаги, постоянная проверка
+- **SQLite:** `DATABASE_URL="sqlite:///%kernel.project_dir%/var/data.db"`. В Docker файл лежит
+  в томе `calendar_data`, поэтому данные переживают `docker-compose down/up`.
+- При старте контейнера схема создаётся автоматически (миграции + `doctrine:schema:update`).
+- **Порт:** по умолчанию `8081`, задаётся переменной `PORT`.
 
 ---
 
 ## 📋 План развития
 
-- [x] Базовый сценарий бронирования
-- [ ] Кастомное расписание (гибкие окна доступности)
-- [ ] Таймзоны
-- [ ] Регистрация и аккаунты
-- [ ] Интеграция с календарями (Google, iCloud)
-- [ ] Уведомления (email, Telegram)
-- [ ] Перенос/отмена бронирований
-- [ ] Аналитика по записям
+- [x] Базовый сценарий бронирования (event types, availability, bookings)
+- [ ] Фронтенд (React/Vite)
+- [ ] E2E-тесты (Playwright)
+- [ ] CI/CD (GitHub Actions, release-please)
+- [ ] Таймзоны, аккаунты, уведомления
 
 ---
 
 ## 📝 Лицензия
 
 MIT © [Hexlet](https://hexlet.io)
-
----
-
-## 🙏 Благодарности
-
-- [Cal.com](https://cal.com) — за вдохновение
-- [TypeSpec](https://typespec.io) — за инструмент описания API
-- [Symfony](https://symfony.com) — за надёжный бэкенд
-- [Hexlet](https://hexlet.io) — за крутой курс и проект
-
----
-
-**Вопросы?** Создайте [Issue](https://github.com/your-username/calendar/issues) или свяжитесь с автором.
-
----
-
-## Как использовать этот README
-
-1. **Сохраните файл** как `README.md` в корне проекта
-2. **Замените `your-username`** на ваш GitHub-username
-3. **Уберите/оставьте** разделы по мере реализации
-4. **Обновляйте** по мере развития проекта
-
----
 
 ## Автор
 

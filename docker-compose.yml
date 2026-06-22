@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: calendar-backend
+    container_name: calendar-backend
+    ports:
+      - "${PORT:-8081}:${PORT:-8081}"
+    environment:
+      PORT: ${PORT:-8081}
+      APP_ENV: ${APP_ENV:-dev}
+      APP_DEBUG: ${APP_DEBUG:-1}
+      DATABASE_URL: "sqlite:////app/var/data.db"
+    volumes:
+      # Persist the SQLite database (and cache/logs) across restarts
+      - calendar_data:/app/var
+    restart: unless-stopped
+
+volumes:
+  calendar_data:

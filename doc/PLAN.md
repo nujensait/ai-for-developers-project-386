@@ -1,108 +1,111 @@
 # PLAN — Сервис бронирования «Календарь»
 
-> План выполнения ТЗ (`doc/AGENT_TZ.md`) ИИ-агентом.
-> Подход: Design-First, backend MVP в первую очередь, затем frontend / E2E / CI.
+> План выполнения ТЗ (`doc/AGENT_TZ.md`) с учётом уточнений заказчика.
+> Подход: Design-First. Поставка: контракт (TypeSpec) + backend (Symfony 7.2) + Docker + Makefile + README.
 
-## 0. Ключевые решения (согласовано)
-- **Охват:** сначала backend MVP (Symfony API + Docker + тесты), затем фазы frontend, E2E, CI/CD.
-- **Хранилище:** `FilesystemAdapter` за интерфейсом `*RepositoryInterface` (не `ArrayAdapter`) — данные переживают запросы под `php -S`.
-- **Отклонения от ТЗ:** ошибки в примерах кода исправляются и документируются (см. §2).
-- **TypeSpec:** переносится в `typespec/main.tsp` и переписывается как контракт Calendar API.
+## 0. Ключевые решения (согласовано с заказчиком)
+- **Хранилище:** **SQLite через Doctrine ORM** (не in-memory) — данные переживают перезапуски.
+  `DATABASE_URL="sqlite:///%kernel.project_dir%/var/data.db"`.
+- **Порт:** по умолчанию **8081** (через переменную `PORT`); не 8080 и не 80.
+- **TypeSpec:** переносится в `typespec/main.tsp` и переписывается как контракт Calendar API;
+  генерация OpenAPI скриптом `npm run generate:api` в `./openapi`.
+- **Стек API:** нативный Symfony 7.2 (атрибут-роутинг + Validator + JsonResponse) вместо
+  FOSRestBundle/JMS/Nelmio — меньше зависимостей и рисков сборки (см. §2).
+- **Документация `/api/doc`:** Swagger UI (CDN), который читает OpenAPI, сгенерированный из TypeSpec —
+  честный Design-First, без тяжёлых бандлов.
+- **Охват этой итерации:** TypeSpec + backend + SQLite + Docker + Makefile + README.
+  Frontend / E2E / CI — последующие фазы (см. §8).
 
 ## 1. Окружение и предпосылки
-- PHP локально **8.4** (ТЗ: 8.3; `>=8.3` — ок). Расширение **`intl` локально отсутствует** → канонический запуск/проверка через **Docker** (daemon UP), где `intl` ставится в образ.
-- Compose: использовать `docker-compose` (v2.27); плагин `docker compose` отсутствует.
-- Node 22 / npm 10 — для TypeSpec и (позже) фронтенда.
-- Конфигурацию Symfony строить без жёсткой зависимости от `intl` для локальной разработки.
+- PHP локально **8.4**, но **`pdo_sqlite`, `intl` локально отсутствуют** → backend (composer, схема БД,
+  тесты) выполняется и проверяется **в Docker** (там ставится `pdo_sqlite`).
+- Docker daemon **UP**; Compose — `docker-compose` (v2.27). Образ: `php:8.3-cli-alpine`.
+- Node 22 / npm 10 — для TypeSpec локально (бинарь `tsp` доступен).
 
-## 2. Отклонения от ТЗ (фиксируются в коде и WORK_LOG)
-1. **Хранилище:** `FilesystemAdapter` (PSR-6) за `EventTypeRepositoryInterface` / `BookingRepositoryInterface` вместо in-process `ArrayAdapter`.
-2. **`findConflicting`:** исправить инвертированную логику (`AGENT_TZ.md:404`) — конфликт = пересечение интервалов по **всем** бронированиям владельца (одна календарная сетка), а не пропуск по совпадению `eventTypeId`.
-3. **PSR-6 API:** заменить несуществующий `$cache->set(...)` на `getItem()/$item->set()/save()`.
-4. **Доп. зависимость:** `nelmio/cors-bundle` для CORS (в `composer.json` ТЗ его нет).
-5. **`.env`:** убрать неиспользуемый `DATABASE_URL` (Doctrine не подключается).
+## 2. Отклонения от ТЗ (зафиксированы в коде, WORK_LOG, README)
+1. **Хранилище:** SQLite + Doctrine ORM (по требованию заказчика) вместо `ArrayAdapter`.
+2. **`findConflicting`:** исправлена инвертированная логика (`AGENT_TZ.md:404`); конфликт =
+   пересечение интервалов по **всем** бронированиям (одна календарная сетка).
+3. **Стек:** без FOSRestBundle/JMS/Nelmio — нативные контроллеры Symfony, ручной маппинг DTO,
+   кастомный CORS-subscriber, exception→JSON listener. Причина: совместимость и надёжность сборки на SF 7.2.
+4. **Документация:** Swagger UI + OpenAPI из TypeSpec (вместо аннотаций Nelmio).
+5. **Сервер:** `php -S 0.0.0.0:$PORT -t public public/index.php` (с router-скриптом — иначе `/api/*` не маршрутизируется).
+6. **Порт:** 8081 по умолчанию.
 
 ## 3. Допущения
 - Календарь одного владельца, без авторизации (по README).
 - `endTime` вычисляется из `EventType.duration`.
 - Слоты: интервал 30 мин, 09:00–21:00, на 14 дней — из параметров `services.yaml`.
-- Формат ID: `evt_*` / `bok_*` (как в примерах README).
+- Формат ID: `evt_*` / `bok_*`.
 - Все даты — UTC, ISO 8601 (`Y-m-d\TH:i:s\Z`).
 
 ---
 
-## 4. Фазы и шаги
+## 4. Шаги реализации (текущая итерация)
 
-### Фаза 0 — Контракт (Design-First)
-- Создать `typespec/`, перенести `main.tsp`, переписать под Calendar API:
-  модели `EventType`, `CreateEventType`, `Booking`, `CreateBooking`, `Slot`, `Error{code,message}`;
-  маршруты: `/event-types` (CRUD), `/availability` (GET), `/bookings` (GET list/one, POST, DELETE).
-- Обновить `tspconfig.yaml` / `package.json`; цель `make generate-api` → OpenAPI 3.1 в `openapi/`.
-- **Готово:** `npx tsp compile` без ошибок, OpenAPI сгенерирован.
+### Шаг 1 — Контракт (TypeSpec → OpenAPI)
+- `typespec/main.tsp`: модели `EventType`, `Booking`, `TimeSlot`, `Error`; CRUD `/api/event-types`,
+  `GET /api/availability`, `POST/GET/DELETE /api/bookings`; валидация (email, обязательные поля).
+- `package.json`: скрипт `generate:api`; `npm run generate:api` → `./openapi`.
+- **Готово:** OpenAPI сгенерирован без ошибок.
 
-### Фаза 1 — Каркас backend
-- `backend/composer.json` (Symfony 7.2: framework-bundle, cache, validator, dotenv; fosrest ^3.8, jms/serializer-bundle ^5.4, nelmio/api-doc-bundle, nelmio/cors-bundle; dev: phpunit ^11, maker, phpunit-bridge).
-- `public/index.php`, `src/Kernel.php`, `config/{bundles.php,services.yaml,routes.yaml,packages/*}`, `.env`.
-- Параметры: `app.working_hours_start/end`, `app.availability_days`.
-- **Готово:** `composer install` ок; приложение поднимается; `GET /api/event-types` → `[]`.
+### Шаг 2 — Каркас backend
+- `backend/composer.json` (framework-bundle, runtime, dotenv, validator, yaml, console;
+  doctrine/orm, doctrine-bundle, doctrine-migrations-bundle; dev: phpunit ^11, phpunit-bridge, browser-kit, css-selector).
+- `public/index.php`, `src/Kernel.php`, `bin/console`, `config/*`, `.env`, `.env.test`.
+- **Готово:** контейнер поднимается; `GET /api/event-types` → `[]`.
 
-### Фаза 2 — Домен: Entity / DTO / Repository
-- `Entity/EventType`, `Entity/Booking` (+ геттеры).
-- DTO: `CreateEventTypeDTO`, `EventTypeDTO::fromEntity`, `CreateBookingDTO`, `BookingDTO::fromEntity`, `SlotDTO`.
-- Репозитории за интерфейсами на `FilesystemAdapter`; исправленный `findConflicting`; генерация ID.
-- **Готово:** тесты логики пересечения слотов зелёные.
+### Шаг 3 — Доменная модель (Doctrine)
+- `Entity/EventType`, `Entity/Booking` с ORM-атрибутами.
+- `Repository/EventTypeRepository`, `Repository/BookingRepository` (исправленный `findConflicting`).
+- **Готово:** схема создаётся; CRUD работает.
 
-### Фаза 3 — Сервисы
-- `EventTypeService` (CRUD), `BookingService` (create: вычисление `endTime`, проверка конфликта → `ConflictException`, проверка рабочего окна), `AvailabilityService` (генерация слотов, исправленная).
+### Шаг 4 — DTO / Сервисы / Исключения
+- DTO: `CreateEventTypeDTO`, `EventTypeDTO`, `CreateBookingDTO`, `BookingDTO`, `SlotDTO`.
+- `EventTypeService`, `BookingService` (конфликт → `ConflictException`), `AvailabilityService`.
 - `Exception/ConflictException`, `Exception/NotFoundException`.
-- **Готово:** тесты сервисов (конфликт → исключение; корректный список слотов).
 
-### Фаза 4 — Контроллеры и обвязка
-- `EventTypeController` (GET all/one, POST, PUT, DELETE), `BookingController` (GET all/one, POST, DELETE, GET `/availability`).
-- Единый формат ошибок `{code,message}`: 400 (валидация), 404 (не найдено), 409 (конфликт).
-- FOSRest view listener, JMS serializer, Nelmio doc `/api/doc`, CORS для фронтенда.
+### Шаг 5 — Контроллеры и обвязка
+- `EventTypeController` (GET all/one, POST, PUT, DELETE), `BookingController` (GET all/one, POST, DELETE, GET `/availability`), `DocController` (`/api/doc`, `/api/openapi.yaml`).
+- `CorsSubscriber`, `ApiExceptionSubscriber` (единый `{code,message}`; 400/404/409).
 - **Готово:** сквозной `curl`-сценарий; `/api/doc` открывается.
 
-### Фаза 5 — Тесты (PHPUnit)
-- `WebTestCase`: CRUD event-types, availability, booking 201/409, валидация 400, 404.
-- `phpunit.xml.dist`, тестовое окружение (filesystem-кэш в `var/cache/test`, очистка в `setUp`).
-- **Готово:** `php bin/phpunit` зелёный.
+### Шаг 6 — Тесты (PHPUnit)
+- `WebTestCase`: CRUD, availability, booking 201/409, валидация 400, 404.
+- Отдельная тестовая БД (`var/test.db`), пересоздание схемы в `setUp`.
+- **Готово:** `php bin/phpunit` зелёный (в контейнере).
 
-### Фаза 6 — Docker (backend)
-- `backend/Dockerfile` (php:8.3 + intl/opcache + composer, `php -S 0.0.0.0:$PORT -t public`), `docker/php.ini`.
-- `docker-compose.yml` (сервис backend), `Makefile` (`install/dev/build/test/generate-api`).
-- **Готово:** `docker-compose build` без ошибок; контейнер отдаёт API на `$PORT`; `curl` работает.
-
-### Фаза 7 — Frontend (React/Vite) — *последующая фаза*
-- Vite + TS + клиент API из OpenAPI; экраны: список типов, выбор слота, бронирование.
-
-### Фаза 8 — E2E (Playwright) — *последующая фаза*
-- Сценарий «забронировать слот»; `Dockerfile.playwright`, сервис в compose.
-
-### Фаза 9 — CI/CD — *последующая фаза*
-- GitHub Actions (composer install, phpunit, build), release-please. **Не трогать** `hexlet-check.yml`.
+### Шаг 7 — Docker / Makefile / README
+- `backend/Dockerfile` (php:8.3-cli + pdo_sqlite + opcache), `docker/entrypoint.sh`
+  (создание БД + миграции/`schema:update` при старте), `docker/php.ini`.
+- `docker-compose.yml` (порт `${PORT:-8081}`, том для `var/`), `Makefile` (`install/dev/test/generate-api`).
+- `README.md`: установка, запуск, эндпоинты, примеры запросов.
+- **Готово:** `docker-compose build` без ошибок; `up -d`; `curl :8081/api/event-types`.
 
 ---
 
 ## 5. Процесс
-- Вести `doc/WORK_LOG.md` по шагам; при необходимости — `doc/tasks/*.md` на фазу.
+- `doc/WORK_LOG.md` — краткий лог по ходу разработки.
 - Коммиты — только по явному запросу.
-- Проверка — преимущественно через Docker (`intl` доступен) + `curl` + PHPUnit.
+- Проверка backend — в Docker (`pdo_sqlite` доступен) + `curl` + PHPUnit.
 
 ## 6. Риски и митигации
-- `intl` нет локально → канонический запуск в Docker; конфиг без зависимости от `intl`.
-- Нет плагина `docker compose` → использовать `docker-compose` (v2.27).
-- Дрейф версий SF 7.2 + бандлы → пиннинг и фиксация `composer.lock`.
-- Filesystem-кэш в тестах → изоляция по окружению и очистка перед каждым тестом.
+- Нет `pdo_sqlite`/`intl` локально → всё backend-выполнение в Docker.
+- Нет плагина `docker compose` → `docker-compose` (v2.27).
+- Первая сборка тянет образы php/composer → нужна сеть.
+- Совместимость Doctrine ORM 3 + bundle → актуальные версии, `schema:update` как страховка миграций.
 
 ## 7. Definition of Done (по чек-листу ТЗ)
 - [ ] Эндпоинты по контракту TypeSpec
-- [ ] Хранилище переживает запросы (Filesystem)
+- [ ] Данные сохраняются между перезапусками (SQLite)
 - [ ] Валидация (Symfony Validator)
-- [ ] Конфликт → 409
+- [ ] Конфликт слотов → 409
 - [ ] Документация `/api/doc`
 - [ ] CORS для фронтенда
-- [ ] Docker-образ собирается
-- [ ] Запуск на `$PORT`
-- [ ] PHPUnit зелёный
-- [ ] (поздняя фаза) интеграция с фронтендом
+- [ ] Docker-образ собирается без ошибок
+- [ ] Запуск на порту `$PORT` (8081)
+- [ ] PHPUnit-тесты проходят
+
+## 8. Последующие фазы (вне текущей итерации)
+- Frontend (React/Vite), E2E (Playwright), CI/CD (GitHub Actions, release-please).
+- Не трогать `.github/workflows/hexlet-check.yml`.
