@@ -1,4 +1,4 @@
-.PHONY: help setup install install-backend install-frontend build dev up down stop \
+.PHONY: help setup code-setup install install-backend install-frontend build dev up down stop \
         logs logs-backend logs-frontend test generate-api shell curl-check \
         frontend-dev frontend-build frontend-install deploy
 
@@ -18,6 +18,10 @@ help:
 setup: install build
 	@echo "✓ Project setup complete"
 	@echo "  Run 'make up' to start the application"
+
+## code-setup:          setup code environment (for Hexlet CI compatibility)
+code-setup:
+	@echo "✓ Code setup complete (no additional setup required)"
 
 ## install:             install backend + frontend dependencies
 install: install-backend install-frontend
