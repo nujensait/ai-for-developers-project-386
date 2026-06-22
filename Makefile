@@ -56,7 +56,7 @@ logs-frontend:
 
 ## test:                run the PHPUnit backend test suite (inside the container)
 test:
-	docker-compose run --rm -e APP_ENV=test backend php bin/phpunit
+	docker-compose run --rm -e APP_ENV=test backend php vendor/bin/phpunit
 
 ## generate-api:        compile TypeSpec -> OpenAPI and sync it into the backend
 generate-api:

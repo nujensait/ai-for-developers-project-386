@@ -11,6 +11,11 @@ abstract class AbstractWebTestCase extends WebTestCase
 {
     protected KernelBrowser $client;
 
+    protected static function getKernelClass(): string
+    {
+        return \App\Kernel::class;
+    }
+
     protected function setUp(): void
     {
         $this->client = static::createClient();
