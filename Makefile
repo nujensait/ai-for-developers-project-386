@@ -21,7 +21,7 @@ setup: install build
 
 ## code-setup:          setup code environment (for Hexlet CI compatibility)
 code-setup:
-	@echo "✓ Code setup complete (no additional setup required)"
+	docker build -t calendar-slot-code:local -f Dockerfile .
 
 ## install:             install backend + frontend dependencies
 install: install-backend install-frontend
